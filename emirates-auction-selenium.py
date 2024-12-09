@@ -66,30 +66,38 @@ def init_driver():
     driver.get(url)
     return [driver, client]
 
-def find_lot_number(divs):
-    # Iterate over all <div> elements
-    for div in divs:
-        text = div.text.strip()  # Get the text of the div
-        #print(div.get_attribute("outerHTML"));
-        if text.startswith("Lot #"):  # Check if it starts with "Lot #"
-            # Extract the number following "Lot #"
-            #print(text)
-            #print(div.get_attribute("outerHTML"))
-            data = text.split('\n')
-            lot_number=data[0].split('Lot #')[1]            
-            mileage=data[1].split();
-            distance=mileage[0];
-  
-            unit=mileage[1];
-            
-            
+def parse_to_seconds(time_str):
+    # Initialize total seconds
+    total_seconds = 0
 
+    # Check and parse days
+    if 'd' in time_str:
+        days_part = time_str.split('d')[0].strip()
+        days = int(days_part)
+        total_seconds += days * 24 * 60 * 60
+        time_str = time_str.split('d')[1]  # Remove the processed days part
 
+    # Check and parse hours
+    if 'h' in time_str:
+        hours_part = time_str.split('h')[0].strip()
+        hours = int(hours_part.split()[-1])  # Get only the numeric part
+        total_seconds += hours * 60 * 60
+        time_str = time_str.split('h')[1]  # Remove the processed hours part
 
-            return [lot_number, distance, unit]
-    
-    print("No Lot Number found.")
-    return None
+    # Check and parse minutes
+    if 'm' in time_str:
+        minutes_part = time_str.split('m')[0].strip()
+        minutes = int(minutes_part.split()[-1])  # Get only the numeric part
+        total_seconds += minutes * 60
+        time_str = time_str.split('m')[1]  # Remove the processed minutes part
+
+    # Check and parse seconds
+    if 's' in time_str:
+        seconds_part = time_str.split('s')[0].strip()
+        seconds = int(seconds_part.split()[-1])  # Get only the numeric part
+        total_seconds += seconds
+
+    return total_seconds
 
 def scrape_emirates_auction(driver,client):
     try:
@@ -113,29 +121,39 @@ def scrape_emirates_auction(driver,client):
         # Extract details for each vehicle
         for index, container in enumerate(list_card_containers, 1):
             try:
-                title_element=container.find_elements(By.CSS_SELECTOR, "h3")[0]
+                data = container.text.split('\n')
+                title=data[0]
+                lot_number = data[1].split('Lot #')[1]
+                distance = data[2]
+                end_date = datetime.strptime(data[4], f"%b %d, %I:%M %p").replace(year = datetime.now().year)
+                time_left =parse_to_seconds(data[6])
+                bids = data[8]
+                price = data[10]
 
-                # Extract and print details
-                title = title_element.text.strip()
+                
 
-                y=container.find_elements(By.CSS_SELECTOR, "[id^='CARD_PRICE']")[0]
-
-                price=y.find_elements(By.CSS_SELECTOR,"span")[1].text.strip();
-
-                z=container.find_elements(By.CSS_SELECTOR,"div")
-                [lot_number, distance, unit]=find_lot_number(z)
+                
 
 
 
                 print(f"{index}. Title: {title}")
-                print(f"   Price: {price}")
-                print(f"   Distance Unit: {unit}")
+                print(f"   Price: {price}")                
                 print(f"   Distance: {distance}")
                 print(f"   Lot Number: {lot_number}")
+                print(f"   end_date: {end_date}")
+                print(f"   time_left: {time_left}")
+                print(f"   bids: {bids}")
                 print("---")
                 
-                client.insert('EA1', [(lot_number, title, convert_price(price), convert_to_uint16(distance), unit, datetime.now())], 
-                        column_names=['lot','title','price','distance','unit','time'])
+                client.insert('EA1', [(lot_number, 
+                                       title, 
+                                       convert_price(price), 
+                                       distance,
+                                       end_date,
+                                       time_left,
+                                       bids,  
+                                       datetime.now())], 
+                        column_names=['lot','title','price','distance','end_date','time_left','bids','time'])
             
             except Exception as card_error:
                 print(f"Error extracting details for card {index}: {card_error}")
@@ -145,7 +163,7 @@ def scrape_emirates_auction(driver,client):
     
 
 
-def continuous_scrape(interval=5):
+def continuous_scrape(interval=30):
     """
     Continuously scrape the Emirates Auction website at specified intervals
     
